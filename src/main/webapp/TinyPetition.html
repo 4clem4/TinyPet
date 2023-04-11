@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TinyPet</title>
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.8.0/css/bulma.min.css">
+    <script defer src="https://use.fontawesome.com/releases/v5.3.1/js/all.js"></script>
+
+    <script src="https://unpkg.com/jwt-decode/build/jwt-decode.js"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://unpkg.com/mithril/mithril.js"></script>
+
+</head>
+<body>
+<script>
+
+var Login = {
+  name:"",
+  email:"",
+  ID:"",
+  url:"",
+  handleCredential: function(response) {
+    console.log("callback called:"+response.credential)
+    // decodeJwtResponse() is a custom function defined by you
+    // to decode the credential response.
+    const responsePayload = jwt_decode(response.credential);
+   
+    console.log("ID: " + responsePayload.sub);
+    console.log('Full Name: ' + responsePayload.name);
+    console.log('Given Name: ' + responsePayload.given_name);
+    console.log('Family Name: ' + responsePayload.family_name);
+    console.log("Image URL: " + responsePayload.picture);
+    console.log("Email: " + responsePayload.email);
+
+    Login.name=responsePayload.name
+    Login.email= responsePayload.email
+    Login.ID=response.credential
+    Login.url= responsePayload.picture 
+    m.redraw()
+    }
+}
+
+const Header = {
+  view: function(vnode) {
+    return m("header", {class: "header"}, [
+      m("h1", {class: "header-title"}, "TinyPet"),
+      m("div", {class: "header-left"}, [
+        m("button", {class: "header-button", disabled: Login.name==='', onclick: function() {
+            vnode.attrs.showCreateHandler(), console.log("test2")
+        }}, "Créer une pétition"),
+        m("button", {class: "header-button", onclick: function() {
+            vnode.attrs.showTableHandler(), console.log("test")
+        }}, "Liste des pétitions"),
+        m("button", {class: "header-button", disabled: Login.name==='', onclick: function() {
+            //test
+        }}, "Mes pétitions")
+      ]),
+      m("div", {class: "header-right"}, [
+        /*m("button", {class: "header-button header-button-login", onclick: function() {
+          // Remplacer par le bouton de connexion de google
+        }}, "Connexion")*/
+        Login.name === '' ? [
+        m("div", {
+      	   "id":"g_id_onload",
+      	   "data-client_id":"193890684512-iik9flbs0pjql9262lopdera2mcvo5vs.apps.googleusercontent.com",
+           "data-callback": "handleCredentialResponse"}),
+        m("div", {
+      	   "class":"g_id_signin",
+      	   "data-type":"standard"}),]
+           : m("span", "Connecté en tant que " + Login.email)
+
+      ])
+    ]);
+  }
+}
+
+function handleCredentialResponse(response) {
+    console.log("callback called:"+response.credential)
+    Login.handleCredential(response)
+}
+
+var Petition = {
+	    list: [],
+	    loadList: function() {
+	        return m.request({
+	            method: "GET",
+	            url: "_ah/api/myApi/v1/toppetitions/"
+	        })
+	        .then(function(result) {
+	            Petition.list = result.items
+	        	console.log("got:",result.items)
+	        	// m.redraw(true) 
+	        })
+	    },
+        sign: function(petition)
+        {
+            return m.request({
+	            method: "GET",
+	            url: "_ah/api/myApi/v1/signPetition/"+petition+ "?access_token=" + Login.ID
+	        })
+	        .then(function(result) {
+	        	console.log("got:",result)
+	        	Petition.loadList()
+	        })
+        },
+        save: function(name, body)
+        {
+            return m.request({
+	            method: "GET",
+	            url: "_ah/api/myApi/v1/addPetition/"+name+"/"+body+ "?access_token=" + Login.ID
+	        })
+	        .then(function(result) {
+	        	console.log("got:",result)
+	        	Petition.loadList()
+	        })
+        },
+	}
+
+const Table = {
+  oninit: Petition.loadList,
+  view: function() {
+
+    return m("div", {class: "table-container"}, [
+      m("h2", {class: "table-title"}, "Liste des pétitions"),
+      m("table", {class: "table"},[
+        m("thead", [
+          m("tr", [
+            m("th", "Nom de la pétition"),
+            m("th", "Description de la pétition"),
+            m("th", "Créateur de la pétition"),
+            m("th", "Date de création"),
+            Login.name === '' ? null : m("th", "Signer")
+          ])
+        ]),
+        m("tbody", [
+          // création des lignes pour chaque pétition
+          Petition.list.map(function(petition) {
+            return m("tr", [
+              m("td", petition.key.name),
+              m("td", petition.properties.Body),
+              m("td", petition.properties.Owner),
+              m("td", petition.properties.Date),
+              Login.name === '' ? null : m("td", m("button", { class: "form-button", disabled: Login.name==='', onclick: function() { Petition.sign(petition.key.name) }}, "Signer la pétition"))
+            ]);
+          })
+        ])
+      ])
+    ]);
+  }
+};
+
+
+const Form = {
+  name: "",
+  body: "",
+
+  view: function() {
+    return m("div", {class: "form"}, [
+      m("h2", {class: "form-title"},"Nouvelle pétition"),
+      m("label", {class: "form-label", for: "name"}, "Nom de la pétition: "),
+      m("input", {
+        class: "form-input",
+        type: "text",
+        id: "name",
+        name: "name",
+        onchange: function(event) {
+          Form.name = event.target.value;
+          console.log(Form.name);
+        }
+      }),
+      m("label", {class: "form-label", for: "body"}, "Description: "),
+      m("textarea", {
+        class: "form-input",
+        id: "body",
+        name: "body",
+        onchange: function(event) {
+          Form.body = event.target.value;
+          console.log(Form.body);
+        }
+      }),
+      m("button", {class: "form-button", onclick: function() { Petition.save(Form.name,Form.body)}}, "Créer la pétition")
+    ]);
+  }
+};
+
+var ExamplePage = {
+    view: function() {
+        // Define some state variables
+        var showTable = true;
+        var showCreate = true;
+
+        function showTableHandler() {
+            showTable = true;
+            showCreate = false;
+            console.log("test3");
+            console.log(showCreate);
+            m.redraw()
+        }
+
+        function showCreateHandler() {
+            showTable = false;
+            showCreate = true;
+            console.log("test4")
+            m.redraw()
+        }
+        return m('div', [
+            m(Header, { showTableHandler: showTableHandler,
+                showCreateHandler: showCreateHandler }),
+                Login.name === '' ? null : m(Form),
+            showTable ? m(Table): null
+        ]);
+    }
+}
+
+m.mount(document.body, ExamplePage);
+
+</script>
+
+<style>
+    .form-title{
+    text-align: center;
+    font-weight: bold;
+    font-size: xx-large;
+    margin-bottom: 30px;
+    margin-top: 50px;
+}
+
+.form {
+  width: 400px;
+  margin: 0 auto;
+}
+
+.form h2 {
+  text-align: center;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 5px;
+}
+
+.form-input {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  margin-bottom: 10px;
+}
+
+.form-button {
+  background-color: #4CAF50;
+  color: white;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.form-button:hover {
+  background-color: #3e8e41;
+}
+
+    .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: #333;
+    color: #fff;
+    padding: 10px;
+  }
+  
+  .header-title {
+    margin: 0;
+    font-size: 1.5rem;
+  }
+  
+  .header-left {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+  }
+  
+  .header-right {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+  }
+  
+  .header-button {
+    background-color: transparent;
+    color: #fff;
+    border: none;
+    padding: 10px;
+    margin-left: 10px;
+    cursor: pointer;
+  }
+  
+  .header-button:hover {
+    background-color: #555;
+  }
+  
+  .header-button-login {
+    margin-left: 20px;
+  }
+/*********/
+
+.table {
+  width: 80%;
+  border-collapse: collapse;
+  margin-bottom: 20px;
+  margin-right: auto;
+  margin-left: auto;
+}
+
+.table th,
+.table td {
+  padding: 10px;
+  text-align: left;
+  border: 1px solid #ddd;
+}
+
+.table th {
+  background-color: #f2f2f2;
+  font-weight: bold;
+}
+
+.table tfoot td {
+  text-align: center;
+}
+
+.table tfoot button {
+  margin: 0 10px;
+  cursor: pointer;
+  border: none;
+  background-color: #007bff;
+  color: #fff;
+  padding: 5px 10px;
+  border-radius: 3px;
+}
+
+.table tfoot button[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/*********************/
+
+.table-title{
+    text-align: center;
+    font-weight: bold;
+    font-size: xx-large;
+    margin-bottom: 30px;
+    margin-top: 50px;
+}
+
+.form-input {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  margin-bottom: 10px;
+}
+
+.form-button {
+    background-color: #4CAF50;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-left: 50px;
+    margin-top: 10px;
+}
+</style>
+</body>
+</html>
